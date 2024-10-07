@@ -43,7 +43,7 @@ mavenPublishing {
     coordinates(
         groupId = "io.github.taufik-kurahman",
         artifactId = "glassmorphism-box",
-        version = "1.0.0"
+        version = "1.0.1"
     )
     pom {
         name.set("glassmorphism-box")
