@@ -16,7 +16,6 @@ uiGraphicsAndroid = "1.7.3"
 uiAndroid = "1.7.3"
 foundationLayoutAndroid = "1.7.3"
 vanniktechMavenPublish = "0.29.0"
-nmcp = "0.0.9"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -48,4 +47,3 @@ android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 vanniktech-maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "vanniktechMavenPublish" }
-nmcp = { id = "com.gradleup.nmcp", version.ref = "nmcp" }
