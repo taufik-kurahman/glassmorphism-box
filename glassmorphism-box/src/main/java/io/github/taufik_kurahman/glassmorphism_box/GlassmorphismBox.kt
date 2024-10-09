@@ -1,25 +1,27 @@
 package io.github.taufik_kurahman.glassmorphism_box
 
-import androidx.compose.runtime.Composable
 import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import com.google.android.renderscript.Toolkit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun GlassmorphismBox(
@@ -30,23 +32,39 @@ fun GlassmorphismBox(
     onError: ((t: Throwable) -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
-    var positionInParent by remember {
-        mutableStateOf(IntOffset.Zero)
-    }
-    var blurryBackground by remember {
-        mutableStateOf<ImageBitmap?>(null)
-    }
-    LaunchedEffect(Unit) {
+    var backgroundBoundsInRoot by remember { mutableStateOf(IntOffset.Zero) }
+    var boundsInRoot by remember { mutableStateOf(IntOffset.Zero) }
+    var backgroundImageBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    val updatedContent by rememberUpdatedState(content)
+    LaunchedEffect(backgroundBoundsInRoot, boundsInRoot) {
         try {
-            val captureImageBitmap = capturer.captureAsync()
-            val imageBitmap = captureImageBitmap.await()
-            val configuredBitmap = imageBitmap.asAndroidBitmap().copy(
-                Bitmap.Config.ARGB_8888,
-                false
+            val capturedOffset = capturer.captureOffsetAsync().await()
+            val newBgBoundsInRoot = IntOffset(
+                capturedOffset.x.toInt(),
+                capturedOffset.y.toInt()
             )
-            val blurryBitmap = Toolkit.blur(configuredBitmap, blurRadius)
-            val blurryImageBitmap = blurryBitmap.asImageBitmap()
-            blurryBackground = blurryImageBitmap
+            if (backgroundBoundsInRoot != newBgBoundsInRoot) {
+                backgroundBoundsInRoot = newBgBoundsInRoot
+                if (backgroundImageBitmap == null) {
+                    withContext(Dispatchers.Default) {
+                        val capturedBitmap = capturer.captureBitmapAsync().await()
+                        val configuredBitmap = capturedBitmap.asAndroidBitmap().copy(
+                            Bitmap.Config.ARGB_8888,
+                            false
+                        )
+                        val blurredImageBitmap =
+                            Toolkit.blur(configuredBitmap, blurRadius).asImageBitmap()
+                        val srcOffset = boundsInRoot - backgroundBoundsInRoot
+                        backgroundImageBitmap = clipImageBitmap(
+                            blurredImageBitmap,
+                            srcOffset.x,
+                            srcOffset.y,
+                            capturedBitmap.width,
+                            capturedBitmap.height
+                        )
+                    }
+                }
+            }
         } catch (t: Throwable) {
             onError?.invoke(t)
         }
@@ -55,35 +73,20 @@ fun GlassmorphismBox(
         modifier = modifier
             .onGloballyPositioned { layoutCoordinates ->
                 val newPosition = IntOffset(
-                    x = layoutCoordinates.positionInParent().x.toInt(),
-                    y = layoutCoordinates.positionInParent().y.toInt()
+                    layoutCoordinates.positionInRoot().x.toInt(),
+                    layoutCoordinates.positionInRoot().y.toInt()
                 )
-                if (positionInParent != newPosition) {
-                    positionInParent = newPosition
+                if (boundsInRoot != newPosition) {
+                    boundsInRoot = newPosition
                 }
             }
-            .drawWithCache {
-                onDrawBehind {
-                    blurryBackground?.let { imageBitmap ->
-                        val srcOffset = IntOffset(
-                            positionInParent.x,
-                            positionInParent.y
-                        )
-                        val srcSize = IntSize(
-                            imageBitmap.width,
-                            imageBitmap.height - positionInParent.y
-                        )
-                        drawImage(
-                            image = imageBitmap,
-                            srcOffset = srcOffset,
-                            srcSize = srcSize,
-                            dstOffset = IntOffset.Zero
-                        )
-                    }
+            .drawBehind {
+                backgroundImageBitmap?.let {
+                    drawImage(it)
                 }
             },
         contentAlignment = contentAlignment
     ) {
-        content()
+        updatedContent()
     }
 }
