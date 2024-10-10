@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import com.google.android.renderscript.Toolkit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -32,20 +33,21 @@ fun GlassmorphismBox(
     onError: ((t: Throwable) -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
-    var backgroundBoundsInRoot by remember { mutableStateOf(IntOffset.Zero) }
-    var boundsInRoot by remember { mutableStateOf(IntOffset.Zero) }
+    var backgroundPositionInRoot by remember { mutableStateOf(IntOffset.Zero) }
+    var positionInRoot by remember { mutableStateOf(IntOffset.Zero) }
+    var clipSize by remember { mutableStateOf(IntSize.Zero) }
     var backgroundImageBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     val updatedContent by rememberUpdatedState(content)
-    LaunchedEffect(backgroundBoundsInRoot, boundsInRoot) {
+    LaunchedEffect(backgroundPositionInRoot, positionInRoot, clipSize) {
         try {
             val capturedOffset = capturer.captureOffsetAsync().await()
             val newBgBoundsInRoot = IntOffset(
                 capturedOffset.x.toInt(),
                 capturedOffset.y.toInt()
             )
-            if (backgroundBoundsInRoot != newBgBoundsInRoot) {
-                backgroundBoundsInRoot = newBgBoundsInRoot
-                if (backgroundImageBitmap == null) {
+            if (backgroundPositionInRoot != newBgBoundsInRoot) {
+                backgroundPositionInRoot = newBgBoundsInRoot
+                if (backgroundImageBitmap == null && clipSize != IntSize.Zero) {
                     withContext(Dispatchers.Default) {
                         val capturedBitmap = capturer.captureBitmapAsync().await()
                         val configuredBitmap = capturedBitmap.asAndroidBitmap().copy(
@@ -54,13 +56,13 @@ fun GlassmorphismBox(
                         )
                         val blurredImageBitmap =
                             Toolkit.blur(configuredBitmap, blurRadius).asImageBitmap()
-                        val srcOffset = boundsInRoot - backgroundBoundsInRoot
+                        val srcOffset = positionInRoot - backgroundPositionInRoot
                         backgroundImageBitmap = clipImageBitmap(
                             blurredImageBitmap,
                             srcOffset.x,
                             srcOffset.y,
-                            capturedBitmap.width,
-                            capturedBitmap.height
+                            clipSize.width,
+                            clipSize.height
                         )
                     }
                 }
@@ -72,12 +74,15 @@ fun GlassmorphismBox(
     Box(
         modifier = modifier
             .onGloballyPositioned { layoutCoordinates ->
+                if (clipSize != layoutCoordinates.size) {
+                    clipSize = layoutCoordinates.size
+                }
                 val newPosition = IntOffset(
                     layoutCoordinates.positionInRoot().x.toInt(),
                     layoutCoordinates.positionInRoot().y.toInt()
                 )
-                if (boundsInRoot != newPosition) {
-                    boundsInRoot = newPosition
+                if (positionInRoot != newPosition) {
+                    positionInRoot = newPosition
                 }
             }
             .drawBehind {
