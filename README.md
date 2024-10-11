@@ -8,7 +8,7 @@ maven { url = uri("https://www.jitpack.io") }
 ```
 dependencies:
 ```
-implementation("io.github.taufik-kurahman:glassmorphism-box:1.0.3")
+implementation("io.github.taufik-kurahman:glassmorphism-box:1.0.4")
 ```
 
 Usage: 
