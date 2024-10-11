@@ -1,6 +1,5 @@
 package io.github.taufik_kurahman.glassmorphism_box
 
-import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
@@ -14,13 +13,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
-import com.google.android.renderscript.Toolkit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -30,9 +26,16 @@ fun GlassmorphismBox(
     capturer: Capturer,
     contentAlignment: Alignment = Alignment.TopStart,
     blurRadius: Int = 25,
+    blurPasses: Int = 5,
     onError: ((t: Throwable) -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
+    require(blurRadius in 1..25) {
+        "The radius should be between 1 and 25. $blurRadius provided."
+    }
+    require(blurPasses in 1..5) {
+        "The passes should be between 1 and 5. $blurPasses provided."
+    }
     var backgroundPositionInRoot by remember { mutableStateOf(IntOffset.Zero) }
     var positionInRoot by remember { mutableStateOf(IntOffset.Zero) }
     var clipSize by remember { mutableStateOf(IntSize.Zero) }
@@ -41,28 +44,22 @@ fun GlassmorphismBox(
     LaunchedEffect(backgroundPositionInRoot, positionInRoot, clipSize) {
         try {
             val capturedOffset = capturer.captureOffsetAsync().await()
-            val newBgBoundsInRoot = IntOffset(
+            val newBackgroundPositionInRoot = IntOffset(
                 capturedOffset.x.toInt(),
                 capturedOffset.y.toInt()
             )
-            if (backgroundPositionInRoot != newBgBoundsInRoot) {
-                backgroundPositionInRoot = newBgBoundsInRoot
+            if (backgroundPositionInRoot != newBackgroundPositionInRoot) {
+                backgroundPositionInRoot = newBackgroundPositionInRoot
                 if (backgroundImageBitmap == null && clipSize != IntSize.Zero) {
                     withContext(Dispatchers.Default) {
-                        val capturedBitmap = capturer.captureBitmapAsync().await()
-                        val configuredBitmap = capturedBitmap.asAndroidBitmap().copy(
-                            Bitmap.Config.ARGB_8888,
-                            false
-                        )
-                        val blurredImageBitmap =
-                            Toolkit.blur(configuredBitmap, blurRadius).asImageBitmap()
-                        val srcOffset = positionInRoot - backgroundPositionInRoot
-                        backgroundImageBitmap = clipImageBitmap(
-                            blurredImageBitmap,
-                            srcOffset.x,
-                            srcOffset.y,
-                            clipSize.width,
-                            clipSize.height
+                        val capturedImageBitmap = capturer.captureImageBitmapAsync().await()
+                        backgroundImageBitmap = createBlurredBackground(
+                            capturedImageBitmap,
+                            backgroundPositionInRoot,
+                            positionInRoot,
+                            clipSize,
+                            blurRadius,
+                            blurPasses
                         )
                     }
                 }

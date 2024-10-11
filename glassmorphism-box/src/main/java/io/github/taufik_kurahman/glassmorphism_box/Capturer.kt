@@ -18,6 +18,9 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.platform.InspectorInfo
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import com.google.android.renderscript.Toolkit
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -39,7 +42,7 @@ class Capturer(internal val graphicsLayer: GraphicsLayer) {
     var capturedOffset: Offset = Offset.Zero
         private set
 
-    fun captureBitmapAsync(): Deferred<ImageBitmap> {
+    fun captureImageBitmapAsync(): Deferred<ImageBitmap> {
         return CompletableDeferred<ImageBitmap>().also { deferred ->
             _bitmapCaptureRequests.trySend(deferred)
         }
@@ -145,28 +148,67 @@ private class GlassmorphismBackgroundModifierNode(
     }
 }
 
-internal fun clipImageBitmap(
-    image: ImageBitmap,
+private fun clipBitmap(
+    image: Bitmap,
     offsetX: Int,
     offsetY: Int,
     width: Int,
     height: Int
-): ImageBitmap {
-    val bitmap = image.asAndroidBitmap()
-
-    val actualWidth = if (offsetX + width > bitmap.width) bitmap.width - offsetX else width
-    val actualHeight = if (offsetY + height > bitmap.height) bitmap.height - offsetY else height
+): Bitmap {
+    val actualWidth = if (offsetX + width > image.width) image.width - offsetX else width
+    val actualHeight = if (offsetY + height > image.height) image.height - offsetY else height
 
     val safeOffsetX = if (offsetX < 0) 0 else offsetX
     val safeOffsetY = if (offsetY < 0) 0 else offsetY
 
     val clippedBitmap = Bitmap.createBitmap(
-        bitmap,
+        image,
         safeOffsetX,
         safeOffsetY,
         actualWidth,
         actualHeight
     )
 
-    return clippedBitmap.asImageBitmap()
+    return clippedBitmap
+}
+
+private fun applyStrongBlur(
+    bitmap: Bitmap,
+    radius: Int,
+    passes: Int
+): Bitmap {
+    var blurredBitmap = bitmap
+    for (i in 0 until passes) {
+        blurredBitmap = Toolkit.blur(blurredBitmap, radius)
+    }
+    return blurredBitmap
+}
+
+internal fun createBlurredBackground(
+    imageBitmap: ImageBitmap,
+    backgroundPositionInRoot: IntOffset,
+    positionInRoot: IntOffset,
+    clipSize: IntSize,
+    blurRadius: Int,
+    blurPasses: Int
+): ImageBitmap {
+    val configuredBitmap = imageBitmap.asAndroidBitmap().copy(
+        Bitmap.Config.ARGB_8888,
+        false
+    )
+    val srcOffset = positionInRoot - backgroundPositionInRoot
+    val clippedImageBitmap = clipBitmap(
+        configuredBitmap,
+        srcOffset.x,
+        srcOffset.y,
+        clipSize.width,
+        clipSize.height
+    )
+    val blurredBitmap = applyStrongBlur(
+        bitmap = clippedImageBitmap,
+        radius = blurRadius,
+        passes = blurPasses
+    )
+
+    return blurredBitmap.asImageBitmap()
 }
